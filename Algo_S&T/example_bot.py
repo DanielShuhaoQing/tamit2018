@@ -58,34 +58,43 @@ def update_market(msg, TradersOrder):
 def update_trader(msg, TradersOrder):
     global tick
     global p2tick
-    global p1
     global SECURITIES
     global DARKORDER
     global case_length
+    global position_limit
     lit_position = msg['trader_state']['positions']['TRDRS.LIT']
     dark_position = msg['trader_state']['positions']['TRDRS.DARK']
     all_position = lit_position + dark_position
     all_position_abs = abs(all_position)
+
+    # handle buy dark
     if tick == p2tick - 1:
         if DARKORDER['isBuy']:
             target_min = SECURITIES['TRDRS.LIT']
-            TradersOrder.addSell('TRDRS.DARK', 5000, target_min + 10)
+            TradersOrder.addSell('TRDRS.DARK', position_limit, target_min + 10)
             #TODO
         else:
             target_min = SECURITIES['TRDRS.LIT']
-            TradersOrder.addBuy('TRDRS.DARK', 5000, target_min - 10)
+            TradersOrder.addBuy('TRDRS.DARK', position_limit, target_min - 10)
 
+    # handle cancel not fulfilled dark orders
+    if tick == p2tick + 1 and msg['trader_state']['open_orders'] != {}:
+        for order in msg['trader_state']['open_orders'].keys():
+            TradersOrder.addCancel('TRDRS.DARK', order)
+
+
+    # Buy(sell) to maximize(minimize) position to 
     if tick < p2tick and tick <= case_length - 15:
-        if all_position_abs < 5000:
-            for i in range(0, int((5000 - all_position_abs) / 1000)):
+        if all_position_abs < position_limit:
+            for i in range(0, int((position_limit - all_position_abs) / 1000)):
                 if DARKORDER['isBuy']:
                     TradersOrder.addBuy('TRDRS.LIT', 1000)
                 else:
                     TradersOrder.addSell('TRDRS.LIT', 1000)
-            if DARKORDER['isBuy'] and (5000 - all_position_abs) % 1000 > 0:
-                TradersOrder.addBuy('TRDRS.LIT', (5000 - all_position_abs) % 1000)
+            if DARKORDER['isBuy'] and (position_limit - all_position_abs) % 1000 > 0:
+                TradersOrder.addBuy('TRDRS.LIT', (position_limit - all_position_abs) % 1000)
             else:
-                TradersOrder.addSell('TRDRS.LIT', (5000 - all_position_abs) % 1000)
+                TradersOrder.addSell('TRDRS.LIT', (position_limit - all_position_abs) % 1000)
     elif tick >= p2tick + 2 or tick > case_length - 15: # TODO
         # need to clear out the position
         if all_position > 0:
@@ -109,12 +118,12 @@ def update_order(msg, TradersOrder):
     pass
 
 def update_news(msg, TradersOrder):
-    print(msg)
     global DARKORDER
     global p1
     global p2tick
     global tick
     global case_length
+    global position_limit
     DARKORDER['isBuy'] = 'buy' in msg['news']['headline']
     DARKORDER['size'] = int(msg['news']['body'])
     DARKORDER['source'] = msg['news']['source']
@@ -123,17 +132,13 @@ def update_news(msg, TradersOrder):
     p1 = SECURITIES['TRDRS.LIT']
 
     if tick > case_length - 15:
-        return
+        return  # TODO
 
-    for i in range(0, 5):
+    for i in range(0, int(position_limit / 1000)):
         if DARKORDER['isBuy']:
             TradersOrder.addBuy('TRDRS.LIT', 1000)
         else:
             TradersOrder.addSell('TRDRS.LIT', 1000)
-
-def process():
-    # Do stuff to trade
-    pass
 
 t.onAckRegister = register
 t.onMarketUpdate = update_market

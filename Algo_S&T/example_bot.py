@@ -83,20 +83,20 @@ def update_trader(msg, TradersOrder):
                 else:
                     TradersOrder.addSell('TRDRS.LIT', 1000)
             if DARKORDER['isBuy'] and (5000 - all_position_abs) % 1000 > 0:
-                    TradersOrder.addBuy('TRDRS.LIT', (5000 - all_position_abs) % 1000)
-                else:
-                    TradersOrder.addSell('TRDRS.LIT', (5000 - all_position_abs) % 1000)
+                TradersOrder.addBuy('TRDRS.LIT', (5000 - all_position_abs) % 1000)
+            else:
+                TradersOrder.addSell('TRDRS.LIT', (5000 - all_position_abs) % 1000)
     elif tick >= p2tick + 2 or tick > case_length - 15: # TODO
         # need to clear out the position
         if all_position > 0:
             for i in range(0, int(all_position_abs / 1000)):
                 TradersOrder.addSell('TRDRS.LIT', 1000)
-            if all_position_abs % 1000 > 0
+            if all_position_abs % 1000 > 0:
                 TradersOrder.addSell('TRDRS.LIT', all_position_abs % 1000)
         else:
             for i in range(0, int(all_position_abs / 1000)):
                 TradersOrder.addBuy('TRDRS.LIT', 1000)
-            if all_position_abs % 1000 > 0
+            if all_position_abs % 1000 > 0:
                 TradersOrder.addBuy('TRDRS.LIT', all_position_abs % 1000)
                         #TODO 3500
 

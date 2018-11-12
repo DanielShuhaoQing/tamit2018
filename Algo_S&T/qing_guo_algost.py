@@ -1,7 +1,6 @@
 from tradersbot import *
 from datetime import datetime, timedelta
 import numpy as np
-import pandas as pd
 import sys
 
 t = TradersBot(host=sys.argv[1], id=sys.argv[2], password=sys.argv[3])
@@ -75,11 +74,11 @@ def update_trader(msg, TradersOrder):
     if tick == p2tick - 1:
         if DARKORDER['isBuy']:
             target_min = SECURITIES['TRDRS.LIT']
-            TradersOrder.addSell('TRDRS.DARK', position_limit, target_min + 10)
+            TradersOrder.addSell('TRDRS.DARK', position_limit, target_min + 5)
             #TODO
         else:
             target_min = SECURITIES['TRDRS.LIT']
-            TradersOrder.addBuy('TRDRS.DARK', position_limit, target_min - 10)
+            TradersOrder.addBuy('TRDRS.DARK', position_limit, target_min - 5)
 
     # cancel unfulfilled dark orders
     if tick == p2tick + 1 and msg['trader_state']['open_orders'] != {}:
@@ -103,11 +102,6 @@ def update_trader(msg, TradersOrder):
         p2 = SECURITIES['TRDRS.LIT'] if DARKORDER['isBuy'] else  -SECURITIES['TRDRS.LIT']
     if tick == p2tick + 4:
         p4 = SECURITIES['TRDRS.LIT'] if DARKORDER['isBuy'] else  -SECURITIES['TRDRS.LIT']
-        print("\ncurrent tick is ", tick, "\n")
-        print_msg(clearOutTick)
-        print_msg(SOURCES)
-        print_msg(p2)
-        print_msg(p4)
         SOURCES[DARKORDER['source']] += (1 if p2 > p4 else -1)
     
     # need to clear out the position

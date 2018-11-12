@@ -11,7 +11,6 @@ t = tt.TradersBot(host=sys.argv[1], id=sys.argv[2], password=sys.argv[3])
 case_length = 450
 # Keeps track of prices
 SECURITIES = {}
-SECURITIES_NEW_PRICE = {}
 # Keeps track of the portfolio
 PORTFORLIO = {}
 # Keep track of the price of the future
@@ -22,7 +21,6 @@ tick = 0
 realized_volatility = []
 # Keep track of the orders to be fulfilled
 ORDERS = {}
-# count = 80
 
 
 
@@ -129,7 +127,8 @@ def market_update_method(msg, order):
 	global Ss
 	security = msg['market_state']['ticker']
 	new_price = msg['market_state']['last_price']
-	tick = msg['elapsed_time']
+	if "elapsed_time" in msg.keys():
+		tick = msg['elapsed_time']
 	if security == "TMXFUT":
 		if tick > 2:
 			Ss.append(msg['market_state']['last_price'])
@@ -140,15 +139,77 @@ def market_update_method(msg, order):
 
 
 ####################################### trader update ###########################################
-def compute_rv():
-	global Ss
-	global case_length
-	log_returns = []
-	if len(Ss) <= 2:
-		return 0
-	for i in range(1 , len(Ss)):
-		log_returns.append(math.log(Ss[i]) - math.log(Ss[i-1]))
-	return np.std(log_returns, ddof = 1) * math.sqrt(case_length * 12)
+
+def handle_clear(order):
+	global ORDERS
+	global tick
+	if tick in ORDERS.keys():
+		new_orders = ORDERS[tick]
+		for i in range (0, int(len(new_orders)/3)):
+			if new_orders[i*3] == "B":
+				order.addBuy(new_orders[i*3+1], new_orders[i*3+2])
+			else:
+				order.addSell(new_orders[i*3+1], new_orders[i*3+2])
+
+def sticky(option_type, order):
+	global ORDERS
+	global SECURITIES
+	global tick
+
+	ivs = []
+	ks = []
+	for security in SECURITIES.keys():
+		if security[-1] == option_type:
+			ivs.append((SECURITIES[security]["sigma"][-3] + SECURITIES[security]["sigma"][-2])/2)
+			old_k = int(security[1:-1])
+			new_k = old_k / ((Ss[-3] + Ss[-2])/2) * Ss[-1]
+			ks.append(new_k)
+	poly = np.poly1d(np.polyfit(ks, ivs, 3))
+	pos_security = ""
+	pos = -1
+	neg_security = ""
+	neg = -1
+	for security in SECURITIES.keys():
+		if security[-1] == option_type:
+			diff = SECURITIES[security]["sigma"][-1] - poly(int(security[1:-1]))
+			new_val = abs(diff)
+			if diff < 0:
+				if new_val > neg:
+					neg = new_val
+					neg_security = security
+			else:
+				if new_val > pos:
+					pos = new_val
+					pos_security = security
+	
+	if neg == -1 or pos == -1:
+		return
+	order.addBuy(neg_security, 100)
+	if tick+2 in ORDERS.keys():
+		ORDERS[tick+2].extend(["S", neg_security, 100])
+	else:
+		ORDERS[tick+2]=["S", neg_security, 100]
+	order.addSell(pos_security, 100)
+	ORDERS[tick+2].extend(["B", pos_security, 100])
+
+	# hedge delta
+	delta = 0
+	delta -= SECURITIES[neg_security]["delta"]
+	delta += SECURITIES[pos_security]["delta"]
+	delta = int(delta*100)
+	if delta > 0:
+		order.addSell("TMXFUT", abs(delta))
+		ORDERS[tick+2].extend(["B", "TMXFUT", abs(delta)])
+	elif delta < 0:
+		order.addBuy("TMXFUT", abs(delta))
+		ORDERS[tick+2].extend(["S", "TMXFUT", abs(delta)])
+
+def random_trader(order):
+	global ORDERS
+	r = random.randint(80,120)
+	security = "T" + str(r) + "CP"[random.randint(0,1)]
+	order.addSell(security, 100)
+	ORDERS[tick+2] = ["B", security, 100]
 
 # Buys or sells in a random quantity every time it gets an update
 # You do not need to buy/sell here
@@ -157,65 +218,17 @@ def trader_update_method(msg, order):
 	global SECURITIES
 	global tick
 	global ORDERS
-
-	# if tick in ORDERS.keys():
-	# 	new_order = ORDERS[tick]
-	# 	if new_order[0] == "B":
-	# 		order.addBuy(new_order[1], 100)
-	# 	else:
-	# 		order.addSell(new_order[1], 100)
-
-	# rv = compute_rv()
-	# print(rv)
-	# if rv == 0:
-	# 	return
-	# realized_volatility.append(compute_rv())
-	# if len(realized_volatility) <= 3 or tick % 2 == 1:
-	# 	return
-
-	# if tick >= case_length - 10:
-	# 	return
-
-	# diff = realized_volatility[-1] - realized_volatility[-3]
-	# max_security = ""
-	# max = -1
-	# for security in SECURITIES.keys():
-	# 	new_val = abs(SECURITIES[security]["sigma"][-3] + diff - SECURITIES[security]["sigma"][-1])
-	# 	if new_val > max:
-	# 		max = new_val
-	# 		max_security = security
+	global count
 	
-	# if SECURITIES[max_security]["sigma"][-3] + diff < SECURITIES[max_security]["sigma"][-1]:
-	# 	if max_security[-1] == "C":
-	# 		order.addSell(max_security, 100)
-	# 		ORDERS[tick+10] = ["B", max_security]
-	# 	else:
-	# 		order.addBuy(max_security, 100)
-	# 		ORDERS[tick+10] = ["S", max_security]
-	# else:
-	# 	if max_security[-1] == "P":
-	# 		order.addSell(max_security, 100)
-	# 		ORDERS[tick+10] = ["B", max_security]
-	# 	else:
-	# 		order.addBuy(max_security, 100)
-	# 		ORDERS[tick+10] = ["S", max_security]
+	handle_clear(order)
 
-	# global count
-	# vega = 0
-	# delta = 0
-	# for security in msg["trader_state"]["positions"].keys():
-	# 	if msg["trader_state"]["positions"][security] > 0:
-	# 		vega += SECURITIES[security]["vega"]
-	# 		delta += SECURITIES[security]["delta"]
-	# print(msg["trader_state"]["total_fines"] < 0)
-	# print(delta * 500)
-	# print(vega * 500)
-	# print(math.sqrt(-msg["trader_state"]["total_fines"]*1000) + 2000)
-	# print(math.sqrt(-msg["trader_state"]["total_fines"]*1000) + 9000)
-	# if msg["trader_state"]["total_fines"] == 0:
-	# 	order.addBuy("T" + str(count) + "C", 500)
-	# 	order.addBuy("T" + str(count) + "P", 500)
-	# 	count += 1
+	if tick < 4 or tick % 4 != 0:
+		return
+	
+	sticky("C", order)
+	sticky("P", order)
+
+	# random_trader(order)
 
 
 ###############################################
